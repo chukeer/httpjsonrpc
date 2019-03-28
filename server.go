@@ -12,35 +12,22 @@ import (
 )
 
 type RWC struct {
-	r io.Reader
-	w io.Writer
-	c io.Closer
+	io.Reader
+	io.Writer
+	io.Closer
 }
 
 func newRWC(r io.Reader, w io.Writer, c io.Closer) *RWC {
 	return &RWC{
-		r: r,
-		w: w,
-		c: c,
+		Reader: r,
+		Writer: w,
+		Closer: c,
 	}
-}
-
-func (rwc *RWC) Read(p []byte) (n int, err error) {
-	return rwc.r.Read(p)
-}
-
-func (rwc *RWC) Write(p []byte) (n int, err error) {
-	return rwc.w.Write(p)
-}
-
-func (rwc *RWC) Close() error {
-	return rwc.c.Close()
 }
 
 type serverCodec struct {
 	r         *bufio.Reader
-	w         io.Writer
-	c         io.Closer
+	conn      net.Conn
 	jsonCodec rpc.ServerCodec
 	httpReq   *http.Request
 	reply     *bytes.Buffer
@@ -49,8 +36,7 @@ type serverCodec struct {
 func NewServerCodec(conn net.Conn) rpc.ServerCodec {
 	return &serverCodec{
 		r:     bufio.NewReader(conn),
-		w:     conn,
-		c:     conn,
+		conn:  conn,
 		reply: &bytes.Buffer{},
 	}
 }
@@ -61,7 +47,7 @@ func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
 		return err
 	}
 
-	c.jsonCodec = jsonrpc.NewServerCodec(newRWC(c.httpReq.Body, c.reply, c.c))
+	c.jsonCodec = jsonrpc.NewServerCodec(newRWC(c.httpReq.Body, c.reply, c.conn))
 	return c.jsonCodec.ReadRequestHeader(r)
 }
 
@@ -87,9 +73,9 @@ func (c *serverCodec) WriteResponse(r *rpc.Response, x interface{}) error {
 		Header:        make(http.Header, 0),
 	}
 
-	return resp.Write(c.w)
+	return resp.Write(c.conn)
 }
 
 func (c *serverCodec) Close() error {
-	return c.c.Close()
+	return c.conn.Close()
 }
